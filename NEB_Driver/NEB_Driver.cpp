@@ -12,7 +12,7 @@ extern "C" {
 
 using namespace std;
 
-// Method to connect to an engine and store it in the mm_comms array.
+// Method to connect to the engines and store them in the mm_comms array.
 void connect_to_engine(vector<MDI_Comm> &mm_comms, int engines) {
     for (int iengine = 0; iengine < engines; iengine++) {
 	MDI_Comm comm = MDI_Accept_Communicator();
@@ -37,18 +37,18 @@ void connect_to_engine(vector<MDI_Comm> &mm_comms, int engines) {
     }
 }
 
-// Method to close all the MDI engines withing the mm_comms array.
+// Method to close all the MDI engines within the mm_comms array.
 void close_engines(vector<MDI_Comm> &mm_comms, int engines) {
 	for (int i = 0; i < engines; i ++) {
 		MDI_Send_Command("EXIT", mm_comms[i]);
 	}
 }
 
-void normalize_tangent(double * norm_tan, double * tangent, int size) {
+void normalize_tangent(double * norm_tan, double * tangent, int size, int iengine) {
 	// Normalize the tangent vector
-	double tan_mag;
+	double tan_mag = 0.0;
 	for (int i = 0; i < size; i++) {
-		tan_mag += tangent[i];
+		tan_mag += pow(tangent[i], 2);
 	}
 	tan_mag = sqrt(tan_mag);
 	for (int i = 0; i < size; i++) {
@@ -155,8 +155,8 @@ cout <<"Engines to connect to: " << engines << endl;
  // double forces[engines][3*natoms];
   vector<double> atoms(3*natoms, 0.0);
   vector<vector<double>> forces(engines, atoms);
-  double coords[engines][3*natoms];
-  double energy[engines];
+  double coords[engines][3*natoms] = {0};
+  double energy[engines] = {0};
 
   //Start a Geometry Optimization for each node.
   for (int iengine = 0; iengine < engines; iengine++) {
@@ -172,12 +172,11 @@ cout <<"Engines to connect to: " << engines << endl;
 //  while ( (!energy_met) || (!force_met) ) {
   while (iteration <=20) {
 	cout << "Timestep: " << iteration << endl;
-	double old_energy[engines];
-//	double old_forces[engines][3*natoms];
+	double old_energy[engines] = {0};
+	//	double old_forces[engines][3*natoms];
 	vector<vector<double>> old_forces(engines, atoms);
 	//Perform a geometry optimization and give back the forces and coordinates from each node.
 	for (int iengine = 0; iengine < engines; iengine++) {    
-
 		//Proceed to the forces node.
 		MDI_Send_Command("@FORCES", mm_comms[iengine]);
 		//Request and receive the forces from the mm engine. Also store the old forces.
@@ -187,12 +186,8 @@ cout <<"Engines to connect to: " << engines << endl;
 		}
 		MDI_Send_Command("<FORCES", mm_comms[iengine]);
 
-//		MDI_Recv(forces[iengine], 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 		MDI_Recv(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 		
-		//Proceed to the coordinates
-		MDI_Send_Command("@COORDS", mm_comms[iengine]);
-
 		//Request and receive the coordinates from the mm engine.
 		MDI_Send_Command("<COORDS", mm_comms[iengine]);
 		MDI_Recv(&coords[iengine], 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
@@ -202,10 +197,7 @@ cout <<"Engines to connect to: " << engines << endl;
 		MDI_Send_Command("<ENERGY", mm_comms[iengine]);
 		MDI_Recv(&energy[iengine], 1, MDI_DOUBLE, mm_comms[iengine]);
 		cout << "Engine: " << iengine+1 << " Energy: " << std::setprecision(20) << energy[iengine] << endl;
-//		cout << "Engine: " << iengine+1 << " Old Energy: " << std::setprecision(20) << old_energy[iengine] << endl;
 	}
-
-// neb(int engines, );
 
 // Perform the NEB calculation 
 // These exist outside the NEB method
@@ -230,9 +222,9 @@ cout <<"Engines to connect to: " << engines << endl;
 //	neb(engines, coords, energy, forces);	
 	for (int iengine = 1; iengine < engines-1; iengine++) {
 		// Generate the Tangent for the current image.  
-		double tangent_pos[natoms*3];
-		double tangent_neg[natoms*3];
-		double tangent[natoms*3];
+		double tangent_pos[natoms*3] = {0};
+		double tangent_neg[natoms*3] = {0};
+		double tangent[natoms*3] = {0};
 
 		//Generate the Tangent for the current image.
 		//generate_tangent(iengine, natoms, tangent_pos, tangent_neg, tangent, coords, energy);	
@@ -278,22 +270,22 @@ cout <<"Engines to connect to: " << engines << endl;
 			}
 		}
 		// Generate the normalize tangent.
-		double norm_tan[natoms*3];
-		normalize_tangent(norm_tan, tangent, 3*natoms);
+		double norm_tan[natoms*3] = {0};
+		normalize_tangent(norm_tan, tangent, 3*natoms, iengine);
 
 
 
-		double spring_forces[natoms*3];
-		double mag_tan_pos;
-		double mag_tan_neg;
+		double spring_forces[natoms*3] = {0};
+		double mag_tan_pos = 0.0;
+		double mag_tan_neg = 0.0;
 	
 		for (int i = 0; i < natoms*3; i++) {
-			mag_tan_pos += tangent_pos[i];
+			mag_tan_pos += pow(tangent_pos[i], 2);
 		}
 		mag_tan_pos = sqrt(mag_tan_pos);
 
 		for (int i = 0; i < natoms*3; i++) {
-			mag_tan_neg += tangent_neg[i];
+			mag_tan_neg += pow(tangent_neg[i], 2);
 		}
 		mag_tan_neg = sqrt(mag_tan_neg);
 
@@ -304,19 +296,19 @@ cout <<"Engines to connect to: " << engines << endl;
 		if (!climbing_phase) {	
 			// Calculate the True Force
 			// i.e. Current force at each atom subtracting the dot product of that force with the tangent vector.
-			double temp_force[natoms*3];
+			//double temp_force[natoms*3];
 			double dot_prod = 0;
 			for (int i = 0; i < natoms*3; i++) {
 				dot_prod += forces[iengine][i]*norm_tan[i];
 			}
 			for (int i = 0; i < natoms*3; i++) {
-				forces[iengine][i] = spring_forces[i] -	(forces[iengine][i] - dot_prod);
+				forces[iengine][i] = spring_forces[i] -	(-forces[iengine][i] - dot_prod);
 			}
 		} else {
 			if (iengine == max_engine) {
 				// Push the max energy image to the saddle point.
 				cout << "Max Engine: " << max_engine+1 << endl;
-				double temp_force[natoms*3];
+			//	double temp_force[natoms*3];
 				double dot_prod = 0;
 				for (int i = 0; i < natoms*3; i++) {
 					dot_prod += forces[iengine][i]*norm_tan[i];
@@ -328,7 +320,7 @@ cout <<"Engines to connect to: " << engines << endl;
 			} else {
 				// Calculate the True Force
 				// i.e. Current force at each atom subtracting the dot product of that force with the tangent vector.
-				double temp_force[natoms*3];
+			//	double temp_force[natoms*3];
 				double dot_prod = 0;
 				for (int i = 0; i < natoms*3; i++) {
 					dot_prod += forces[iengine][i]*norm_tan[i];
@@ -338,17 +330,19 @@ cout <<"Engines to connect to: " << engines << endl;
 				}
 			}
 		}  
+
 	}    
 
-	double max_replica_force = fnorm_square(old_forces, engines);
-//	cout << "max_replica_force: " << max_replica_force << endl;
 
+//	double max_replica_force = fnorm_square(old_forces, engines);
+//	cout << "max_replica_force: " << max_replica_force << endl;
+	
 	// Send the updated forces back to the engines.
 	for (int iengine = 0; iengine < engines; iengine++) { 
 		MDI_Send_Command(">FORCES", mm_comms[iengine]);
-		MDI_Send(&(forces[iengine]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
+		MDI_Send(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 	} 
-    
+	
 	//Check if we need to perform another iteration.
 	if (iteration != 0) {
 		if (energy_thresh == 0 ) {
@@ -385,10 +379,10 @@ cout <<"Engines to connect to: " << engines << endl;
 	//Provide final output.
 	  ofstream output_file;
 	for ( int iengine = 0; iengine < engines; iengine++) {
-		std::string filename = std::to_string(iengine) + "_final_output.xyz";
+		std::string filename = std::to_string(iengine) + "_replica_output.xyz";
 		output_file.open(filename, std::ofstream::app);
 		output_file << natoms << endl;
-		output_file << "Final coordinates from an NEB calculation." << endl;
+		output_file << "Coordinates from iteration " << (iteration-1) << " of an NEB calculation." << endl;
 		for (int i = 0; i < natoms; i++) {
 			output_file << "H " << coords[iengine][3*i] << " " << coords[iengine][3*i+1] << " " << coords[iengine][3*i+2] << endl;
 		}
@@ -397,6 +391,18 @@ cout <<"Engines to connect to: " << engines << endl;
   }
 
 
+  //Provide final output.
+  ofstream output_file;
+  std::string filename = "Final_NEB_output.xyz";
+  output_file.open(filename, std::ofstream::app);
+  for ( int iengine = 0; iengine < engines; iengine++) {
+	output_file << natoms << endl;
+	output_file << "Replica " << iengine << " final output" << endl;
+	for (int i = 0; i < natoms; i++) {
+		output_file << "H " << coords[iengine][3*i] << " " << coords[iengine][3*i+1] << " " << coords[iengine][3*i+2] << endl;
+	}
+  }
+  output_file.close();
 
   // Send the "EXIT" command to each of the engines
   close_engines(mm_comms, engines);
