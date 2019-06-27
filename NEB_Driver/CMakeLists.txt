@@ -20,7 +20,9 @@ include_directories(${MDI_LOCATION})
 # Compile the driver
 
 add_executable(NEB_Driver
-               NEB_Driver.cpp)
+               NEB_Driver.cpp
+	       NEB_utils.cpp
+	       NEB_utils.h)
 target_link_libraries(NEB_Driver mdi
                       ${MPI_LIBRARIES})
 

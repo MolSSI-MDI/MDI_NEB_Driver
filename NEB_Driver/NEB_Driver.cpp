@@ -9,7 +9,7 @@ extern "C" {
 }
 #include <iomanip>
 #include <vector>
-
+#include "NEB_utils.h"
 using namespace std;
 
 // Method to connect to the engines and store them in the mm_comms array.
@@ -42,38 +42,6 @@ void close_engines(vector<MDI_Comm> &mm_comms, int engines) {
 	for (int i = 0; i < engines; i ++) {
 		MDI_Send_Command("EXIT", mm_comms[i]);
 	}
-}
-
-void normalize_tangent(double * norm_tan, double * tangent, int size, int iengine) {
-	// Normalize the tangent vector
-	double tan_mag = 0.0;
-	for (int i = 0; i < size; i++) {
-		tan_mag += pow(tangent[i], 2);
-	}
-	tan_mag = sqrt(tan_mag);
-	for (int i = 0; i < size; i++) {
-		norm_tan[i] = tangent[i] / tan_mag;
-	}
-}
-
-double local_fnorm_square(vector<double> forces, int length) {
-	double local_norm2_sqr = 0.0;
-
-	for (int i = 0; i < length; i++) {
-		local_norm2_sqr += forces[i]*forces[i];
-	}
-
-	return local_norm2_sqr;
-}
-
-double fnorm_square(vector<vector<double>> forces, int engines) {
-	double norm2_sqr = 0.0;
-	for ( int i = 0; i < engines; i++) {
-//		norm2_sqr += local_fnorm_square(forces[i], forces[i].size());
-		norm2_sqr = std::max(norm2_sqr, local_fnorm_square(forces[i], forces[i].size()));
-	}
-
-	return sqrt(norm2_sqr);
 }
 
 int main(int argc, char **argv) {
@@ -155,8 +123,10 @@ cout <<"Engines to connect to: " << engines << endl;
  // double forces[engines][3*natoms];
   vector<double> atoms(3*natoms, 0.0);
   vector<vector<double>> forces(engines, atoms);
-  double coords[engines][3*natoms] = {0};
-  double energy[engines] = {0};
+//  double coords[engines][3*natoms] = {0};
+  vector<vector<double>> coords(engines, atoms);
+//  double energy[engines] = {0};
+  vector<double> energy(engines, 0);
 
   //Start a Geometry Optimization for each node.
   for (int iengine = 0; iengine < engines; iengine++) {
@@ -169,28 +139,27 @@ cout <<"Engines to connect to: " << engines << endl;
   int iteration = 0;
   int max_engine = -1;
   bool climbing_phase = false;
-//  while ( (!energy_met) || (!force_met) ) {
-  while (iteration <=20) {
+  while ( (!energy_met) || (!force_met) ) {
+//  while (iteration <=3) {
 	cout << "Timestep: " << iteration << endl;
 	double old_energy[engines] = {0};
-	//	double old_forces[engines][3*natoms];
-	vector<vector<double>> old_forces(engines, atoms);
+//	vector<vector<double>> old_forces(engines, atoms);
 	//Perform a geometry optimization and give back the forces and coordinates from each node.
 	for (int iengine = 0; iengine < engines; iengine++) {    
 		//Proceed to the forces node.
 		MDI_Send_Command("@FORCES", mm_comms[iengine]);
 		//Request and receive the forces from the mm engine. Also store the old forces.
 		
-		for (int i = 0; i < 3*natoms; i++) {
-			old_forces[iengine][i] = forces[iengine][i];
-		}
+//		for (int i = 0; i < 3*natoms; i++) {
+//			old_forces[iengine][i] = forces[iengine][i];
+//		}
 		MDI_Send_Command("<FORCES", mm_comms[iengine]);
 
 		MDI_Recv(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 		
 		//Request and receive the coordinates from the mm engine.
 		MDI_Send_Command("<COORDS", mm_comms[iengine]);
-		MDI_Recv(&coords[iengine], 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
+		MDI_Recv(&(coords[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 	
 		// Request and recieve the energy from the mm engine. Also store the old energy.
 		old_energy[iengine] = energy[iengine];
@@ -199,7 +168,6 @@ cout <<"Engines to connect to: " << engines << endl;
 		cout << "Engine: " << iengine+1 << " Energy: " << std::setprecision(20) << energy[iengine] << endl;
 	}
 
-// Perform the NEB calculation 
 // These exist outside the NEB method
 	if (climbing_phase == false) {
 		// Find the engine with the highest energy to push to the saddlepoint.
@@ -210,127 +178,29 @@ cout <<"Engines to connect to: " << engines << endl;
 			}
 		}
 	}
-/*
-	if (iteration > 4 ) {
-		climbing_phase = true;
-	}
-*/
 
-// For the NEB function to perform an iteration, it needs:
-// engines, coords, energy, forces
-
-//	neb(engines, coords, energy, forces);	
+	// Perform the NEB operation over all internal replicas.
 	for (int iengine = 1; iengine < engines-1; iengine++) {
+
 		// Generate the Tangent for the current image.  
-		double tangent_pos[natoms*3] = {0};
-		double tangent_neg[natoms*3] = {0};
-		double tangent[natoms*3] = {0};
-
+		vector<double> tangent_pos(natoms*3, 0);
+		vector<double> tangent_neg(natoms*3, 0);
+		vector<double> tangent(natoms*3, 0);
+	
+	
 		//Generate the Tangent for the current image.
-		//generate_tangent(iengine, natoms, tangent_pos, tangent_neg, tangent, coords, energy);	
-	
-		for (int i = 0; i < natoms*3; i++) {
-			tangent_pos[i] = coords[iengine+1][i] - coords[iengine][i];
-			tangent_neg[i] = coords[iengine][i] - coords[iengine-1][i];
-		}
-		double v_i_max = max(abs(energy[iengine+1] - energy[iengine]), abs(energy[iengine-1] - energy[iengine]));
-		double v_i_min = min(abs(energy[iengine+1] - energy[iengine]), abs(energy[iengine-1] - energy[iengine]));
-
-		if ( energy[iengine] < energy[iengine + 1] ) {
-			if ( energy[iengine] > energy [iengine - 1]) { // V_i+1 > V_i > V_i-1
-				for (int i = 0; i < natoms*3; i++) {
-					tangent[i] = tangent_pos[i];
-				}
-			} else { // V_i+1 > V_i < V_i-1
-				if ( energy[iengine+1] > energy[iengine-1] ) {
-					for (int i = 0; i < natoms*3; i++) {
-						tangent[i] = tangent_pos[i]*v_i_max + tangent_neg[i]*v_i_min;
-					}
-				} else {
-					for (int i = 0; i < natoms*3; i++) {
-						tangent[i] = tangent_pos[i]*v_i_min + tangent_neg[i]*v_i_max;
-					}
-				}
-			}
-		} else { //energy[iengine] > energy[iengine + 1]
-			if ( energy[iengine] < energy[iengine - 1] ) { // V_i+1 < V_i < V_i-1
-				for (int i = 0; i < natoms*3; i++) {
-					tangent[i] = tangent_neg[i];
-				}
-			} else { // V_i+1 < V_i > V_i-1
-				if ( energy[iengine+1] > energy[iengine-1] ) {
-					for (int i = 0; i < natoms*3; i++) {
-						tangent[i] = tangent_pos[i]*v_i_max + tangent_neg[i]*v_i_min;
-					}
-				} else {
-					for (int i = 0; i < natoms*3; i++) {
-						tangent[i] = tangent_pos[i]*v_i_min + tangent_neg[i]*v_i_max;
-					}
-				}
-			}
-		}
+		neb_utilities::generate_tangent(coords, tangent, tangent_pos, tangent_neg, energy, natoms, iengine);
+			
 		// Generate the normalize tangent.
-		double norm_tan[natoms*3] = {0};
-		normalize_tangent(norm_tan, tangent, 3*natoms, iengine);
-
-
-
-		double spring_forces[natoms*3] = {0};
-		double mag_tan_pos = 0.0;
-		double mag_tan_neg = 0.0;
+		vector<double> norm_tan(natoms*3, 0);
+		neb_utilities::normalize_tangent(norm_tan, tangent);
 	
-		for (int i = 0; i < natoms*3; i++) {
-			mag_tan_pos += pow(tangent_pos[i], 2);
-		}
-		mag_tan_pos = sqrt(mag_tan_pos);
-
-		for (int i = 0; i < natoms*3; i++) {
-			mag_tan_neg += pow(tangent_neg[i], 2);
-		}
-		mag_tan_neg = sqrt(mag_tan_neg);
-
-		for (int i = 0; i < natoms*3; i++) {
-			spring_forces[i] = spring_const * (mag_tan_pos - mag_tan_neg) * norm_tan[i];
-		}
-
-		if (!climbing_phase) {	
-			// Calculate the True Force
-			// i.e. Current force at each atom subtracting the dot product of that force with the tangent vector.
-			//double temp_force[natoms*3];
-			double dot_prod = 0;
-			for (int i = 0; i < natoms*3; i++) {
-				dot_prod += forces[iengine][i]*norm_tan[i];
-			}
-			for (int i = 0; i < natoms*3; i++) {
-				forces[iengine][i] = spring_forces[i] -	(-forces[iengine][i] - dot_prod);
-			}
-		} else {
-			if (iengine == max_engine) {
-				// Push the max energy image to the saddle point.
-				cout << "Max Engine: " << max_engine+1 << endl;
-			//	double temp_force[natoms*3];
-				double dot_prod = 0;
-				for (int i = 0; i < natoms*3; i++) {
-					dot_prod += forces[iengine][i]*norm_tan[i];
-				}
-				dot_prod = 2 * dot_prod;
-				for (int i = 0; i < natoms*3; i++) {
-					forces[iengine][i] = (1 * forces[iengine][i]) + (dot_prod * norm_tan[i]);
-				}
-			} else {
-				// Calculate the True Force
-				// i.e. Current force at each atom subtracting the dot product of that force with the tangent vector.
-			//	double temp_force[natoms*3];
-				double dot_prod = 0;
-				for (int i = 0; i < natoms*3; i++) {
-					dot_prod += forces[iengine][i]*norm_tan[i];
-				}
-				for (int i = 0; i < natoms*3; i++) {
-					forces[iengine][i] = spring_forces[i] - (forces[iengine][i] - dot_prod);
-				}
-			}
-		}  
-
+		// Generate the spring forces for the current engine.
+		vector<double> spring_forces(natoms*3, 0);
+		neb_utilities::generate_spring_forces(spring_forces, spring_const, tangent_pos, tangent_neg, norm_tan);
+	
+		// Update the forces based on the spring forces.
+		neb_utilities::update_forces(forces[iengine], norm_tan, spring_forces, iengine, climbing_phase, max_engine);
 	}    
 
 
@@ -343,32 +213,28 @@ cout <<"Engines to connect to: " << engines << endl;
 		MDI_Send(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 	} 
 	
-	//Check if we need to perform another iteration.
-	if (iteration != 0) {
-		if (energy_thresh == 0 ) {
-			energy_met == true;
+	if (iteration > 0) {
+		//Check if we need to perform another iteration based on the energy.
+		if (energy_thresh == 0) {
+			energy_met = true;
 		} else {
 			energy_met = true;
 			for (int iengine = 0; iengine < engines; iengine++) {
 				if ( abs(old_energy[iengine] - energy[iengine]) > energy_thresh) {
 					energy_met = false;
-//					cout << "Energy not met, perform another iteration." << endl;
 				}
 			}
 		}
-	}
 
-    	//Check if we need to perform another iteration.
-    	if (iteration != 0) {
+	    	//Check if we need to perform another iteration based on the forces..
 		if (force_thresh == 0) {
 			force_met = true;
 		} else {
 			force_met = true;
 			for (int iengine = 0; iengine < engines; iengine++) {
 				for (int i = 0; i < 3*natoms; i++) {
-					if ( abs(old_forces[iengine][i] - forces[iengine][i]) > force_thresh) {
+					if (forces[iengine][i] > force_thresh) {
 						force_met = false;
-//						cout << "Forces not met, perform another iteration." << endl;
 					}
 				}
 			}
