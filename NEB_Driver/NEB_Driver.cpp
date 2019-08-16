@@ -142,7 +142,10 @@ cout <<"Engines to connect to: " << engines << endl;
   while ( (!energy_met) || (!force_met) ) {
 //  while (iteration <=3) {
 	cout << "Timestep: " << iteration << endl;
-	double old_energy[engines] = {0};
+	double old_energy[engines];
+	for (int iengine; iengine < engines; iengine++) {
+	  old_energy[iengine] = 0.0;
+	}
 //	vector<vector<double>> old_forces(engines, atoms);
 	//Perform a geometry optimization and give back the forces and coordinates from each node.
 	for (int iengine = 0; iengine < engines; iengine++) {    
