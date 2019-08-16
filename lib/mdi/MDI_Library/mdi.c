@@ -60,6 +60,8 @@ const int MDI_DOUBLE_NUMPY = 4;
 const int MDI_TCP    = 1;
 /*! \brief MPI communication method */
 const int MDI_MPI    = 2;
+/*! \brief Test communication method */
+const int MDI_TEST   = 3;
 
 /*----------------------*/
 /* MDI unit conversions */
@@ -598,4 +600,24 @@ int MDI_Get_MPI_Code_Rank()
 void MDI_Set_MPI_Intra_Rank(int rank)
 {
   intra_rank = rank;
+}
+
+/*! \brief Set the size of MPI_COMM_WORLD
+ *
+ * This function is only used if the linked program uses MPI4PY.
+ *
+ */
+void MDI_Set_World_Size(int world_size_in)
+{
+  set_world_size(world_size_in);
+}
+
+/*! \brief Set the rank of this process within MPI_COMM_WORLD
+ *
+ * This function is only used if the linked program uses MPI4PY.
+ *
+ */
+void MDI_Set_World_Rank(int world_rank_in)
+{
+  set_world_rank(world_rank_in);
 }

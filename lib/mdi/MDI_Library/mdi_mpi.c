@@ -6,7 +6,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <signal.h>
 #include <errno.h>
 #include "mdi.h"
@@ -22,6 +21,32 @@ int intra_rank = 0;
 /*! \brief Order of this code within all codes represented by MPI_COMM_WORLD */
 int mpi_code_rank = 0;
 
+/*! \brief Size of MPI_COMM_WORLD */
+int world_size = -1;
+
+/*! \brief Rank of this process within MPI_COMM_WORLD */
+int world_rank = -1;
+
+/*! \brief Set the size of MPI_COMM_WORLD
+ *
+ * \param [in]       world_size_in
+ *                   Size of MPI_COMM_WORLD
+ */
+int set_world_size(int world_size_in) {
+  world_size = world_size_in;
+  return 0;
+}
+
+/*! \brief Set the rank of this process in MPI_COMM_WORLD
+ *
+ * \param [in]       world_rank_in
+ *                   Rank of this process within MPI_COMM_WORLD
+ */
+int set_world_rank(int world_rank_in) {
+  world_rank = world_rank_in;
+  return 0;
+}
+
 /*! \brief Identify groups of processes belonging to the same codes
  *
  * If do_split == 1, this function will call MPI_Comm_split to create an intra-code communicator for each code.
@@ -36,21 +61,21 @@ int mpi_code_rank = 0;
  *                   Should normally be set to 1, unless the code associated with this process is a Python code.
  *                   In that case, the Python wrapper code will do the split instead.
  */
-int mpi_identify_codes(const char* code_name, int do_split) {
+int mpi_identify_codes(const char* code_name, int do_split, MPI_Comm world_comm) {
   int i, j;
   int driver_rank;
   int nunique_names = 0;
-  int world_rank;
+  //int world_rank;
 
   // get the number of processes
-  int world_size;
-  MPI_Comm_size(MPI_COMM_WORLD, &world_size);
+  MPI_Comm_size(world_comm, &world_size);
 
   // get the rank of this process
-  MPI_Comm_rank(MPI_COMM_WORLD, &world_rank);
+  MPI_Comm_rank(world_comm, &world_rank);
 
   //create the name of this process
-  char buffer[MDI_NAME_LENGTH];
+  //char buffer[MDI_NAME_LENGTH];
+  char* buffer = malloc( sizeof(char) * MDI_NAME_LENGTH );
   strcpy(buffer, code_name);
 
   char* names = NULL;
@@ -60,13 +85,14 @@ int mpi_identify_codes(const char* code_name, int do_split) {
   unique_names = (char*)malloc(sizeof(char) * world_size*MDI_NAME_LENGTH);
 
   MPI_Allgather(buffer, MDI_NAME_LENGTH, MPI_CHAR, names, MDI_NAME_LENGTH,
-     MPI_CHAR, MPI_COMM_WORLD);
+		MPI_CHAR, world_comm);
 
   // determine which rank corresponds to rank 0 of the driver
+  char* name = malloc( sizeof(char) * MDI_NAME_LENGTH );
   driver_rank = -1;
   for (i=0; i<world_size; i++) {
     if ( driver_rank == -1 ) {
-      char name[MDI_NAME_LENGTH];
+      //char name[MDI_NAME_LENGTH];
       memcpy( name, &names[i*MDI_NAME_LENGTH], MDI_NAME_LENGTH );
       if ( strcmp(name, "") == 0 ) {
 	driver_rank = i;
@@ -78,13 +104,15 @@ int mpi_identify_codes(const char* code_name, int do_split) {
   }
 
   //create communicators
+  char* prev_name = malloc( sizeof(char) * MDI_NAME_LENGTH );
+  char* my_name = malloc( sizeof(char) * MDI_NAME_LENGTH );
   for (i=0; i<world_size; i++) {
-    char name[MDI_NAME_LENGTH];
+    //char name[MDI_NAME_LENGTH];
     memcpy( name, &names[i*MDI_NAME_LENGTH], MDI_NAME_LENGTH );
 
     int found = 0;
     for (j=0; j<i; j++) {
-      char prev_name[MDI_NAME_LENGTH];
+      //char prev_name[MDI_NAME_LENGTH];
       memcpy( prev_name, &names[j*MDI_NAME_LENGTH], MDI_NAME_LENGTH );
       if ( strcmp(name, prev_name) == 0 ) {
 	found = 1;
@@ -96,7 +124,7 @@ int mpi_identify_codes(const char* code_name, int do_split) {
       // add this code's name to the list of unique names
       memcpy( &unique_names[nunique_names*MDI_NAME_LENGTH], name, MDI_NAME_LENGTH );
       nunique_names++;
-      char my_name[MDI_NAME_LENGTH];
+      //char my_name[MDI_NAME_LENGTH];
       memcpy( my_name, &names[world_rank*MDI_NAME_LENGTH], MDI_NAME_LENGTH );
       if ( strcmp(my_name, name) == 0 ) {
 	mpi_code_rank = nunique_names;
@@ -113,7 +141,7 @@ int mpi_identify_codes(const char* code_name, int do_split) {
 	color = 1;
 	key = 1;
       }
-      MPI_Comm_split(MPI_COMM_WORLD, color, key, &new_mpi_comm);
+      MPI_Comm_split(world_comm, color, key, &new_mpi_comm);
 
       // create an MDI communicator for communication between the driver and engine
       if ( world_rank == driver_rank || world_rank == i ) {
@@ -138,12 +166,19 @@ int mpi_identify_codes(const char* code_name, int do_split) {
   if ( do_split == 1 ) {
 
     // create the intra-code communicators
-    MPI_Comm_split(MPI_COMM_WORLD, mpi_code_rank, world_rank, &intra_MPI_comm);
+    MPI_Comm_split(world_comm, mpi_code_rank, world_rank, &intra_MPI_comm);
     MPI_Comm_rank(intra_MPI_comm, &intra_rank);
 
-    MPI_Barrier(MPI_COMM_WORLD);
+    MPI_Barrier(world_comm);
 
   }
+
+  free( buffer );
+  free( names );
+  free( unique_names );
+  free( name );
+  free( prev_name );
+  free( my_name );
 
   return 0;
 }

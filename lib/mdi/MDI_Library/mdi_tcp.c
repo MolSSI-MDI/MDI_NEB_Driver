@@ -9,11 +9,11 @@
   #include <netinet/in.h>
   #include <sys/socket.h>
   #include <netdb.h>
+  #include <unistd.h>
 #endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include <signal.h>
 #include <errno.h>
 #include "mdi.h"
@@ -27,7 +27,11 @@ static int sigint_sockfd;
  *                   Dummy argument.
  */
 void sigint_handler(int dummy) {
+#ifdef _WIN32
+  closesocket(sigint_sockfd);
+#else
   close(sigint_sockfd);
+#endif
 }
 
 /*! \brief Socket over which a driver will listen for incoming connections */
@@ -44,6 +48,12 @@ int tcp_listen(int port) {
   struct sockaddr_in serv_addr;
   int reuse_value = 1;
 
+#ifdef _WIN32
+  // initialize Winsock
+  WSADATA wsa_data;
+  ret = WSAStartup(MAKEWORD(2,2), &wsa_data);
+#endif
+
   // create the socket
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
@@ -55,7 +65,8 @@ int tcp_listen(int port) {
   signal(SIGINT, sigint_handler);
 
   // create the socket address
-  bzero((char *) &serv_addr, sizeof(serv_addr));
+  //bzero((char *) &serv_addr, sizeof(serv_addr));
+  memset( &serv_addr, 0, sizeof(serv_addr) );
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
   serv_addr.sin_port = htons(port);
@@ -95,6 +106,12 @@ int tcp_listen(int port) {
 int tcp_request_connection(int port, char* hostname_ptr) {
   int ret, sockfd;
 
+#ifdef _WIN32
+  // initialize Winsock
+  WSADATA wsa_data;
+  ret = WSAStartup(MAKEWORD(2,2), &wsa_data);
+#endif
+
   struct sockaddr_in driver_address;
   struct hostent* host_ptr;
 
@@ -107,37 +124,39 @@ int tcp_request_connection(int port, char* hostname_ptr) {
     mdi_error("Unkown address type");
   }
 
-  bzero((char *) &driver_address, sizeof(driver_address));
+  //bzero((char *) &driver_address, sizeof(driver_address));
+  memset( &driver_address, 0, sizeof(driver_address) );
   driver_address.sin_family = AF_INET;
   driver_address.sin_addr.s_addr = 
     ((struct in_addr *)host_ptr->h_addr_list[0])->s_addr;
   driver_address.sin_port = htons(port);
-
-  // create the socket
-  sockfd = socket(AF_INET, SOCK_STREAM, 0);
-  if (sockfd < 0) {
-    mdi_error("Could not create socket");
-  }
 
   // connect to the driver
   // if the connection is refused, try again
   //   this allows the production code to start before the driver
   int try_connect = 1;
   while (try_connect == 1) {
+
+    // create the socket
+    sockfd = socket(AF_INET, SOCK_STREAM, 0);
+    if (sockfd < 0) {
+      mdi_error("Could not create socket");
+    }
+
     ret = connect(sockfd, (const struct sockaddr *) &driver_address, sizeof(struct sockaddr));
     if (ret < 0 ) {
+#ifdef _WIN32
+      int sock_error = WSAGetLastError();
+      if ( sock_error == WSAECONNREFUSED ) {
+	// close the socket, so that a new one can be created
+	ret = closesocket(sockfd);
+#else
       if ( errno == ECONNREFUSED ) {
-
 	// close the socket, so that a new one can be created
 	ret = close(sockfd);
-	if (ret < 0) {
+#endif
+	if (ret != 0) {
 	  mdi_error("Could not close socket");
-	}
-
-	// create the socket
-	sockfd = socket(AF_INET, SOCK_STREAM, 0);
-	if (sockfd < 0) {
-	  mdi_error("Could not create socket");
 	}
 
       }
@@ -229,7 +248,11 @@ int tcp_send(const void* buf, int count, MDI_Datatype datatype, MDI_Comm comm) {
   }
 
   while ( n >= 0 && total_sent < count_t*datasize ) {
+#ifdef _WIN32
+    n = send(this->sockfd, (char*)buf+total_sent, count_t*datasize-total_sent, 0);
+#else
     n = write(this->sockfd, buf+total_sent, count_t*datasize-total_sent);
+#endif
     total_sent += n;
   }
   if (n < 0) { mdi_error("Error writing to socket: server has quit or connection broke"); }
@@ -269,10 +292,20 @@ int tcp_recv(void* buf, int count, MDI_Datatype datatype, MDI_Comm comm) {
     mdi_error("MDI data type not recognized in tcp_recv");
   }
 
+#ifdef _WIN32
+  n = nr = recv(this->sockfd,(char*)buf,count_t*datasize,0);
+#else
   n = nr = read(this->sockfd,buf,count_t*datasize);
+#endif
 
-  while (nr>0 && n<count_t*datasize )
-    {  nr=read(this->sockfd,buf+n,count_t*datasize-n); n+=nr; }
+  while (nr>0 && n<count_t*datasize ) {
+#ifdef _WIN32
+    nr=recv(this->sockfd,(char*)buf+n,count_t*datasize-n,0);
+#else
+    nr=read(this->sockfd,buf+n,count_t*datasize-n);
+#endif
+    n+=nr;
+  }
 
   if (n == 0) { mdi_error("Error reading from socket: server has quit or connection broke"); }
 

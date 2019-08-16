@@ -7,12 +7,12 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <unistd.h>
 #include "mdi.h"
 #include "mdi_general.h"
 #include "mdi_global.h"
 #include "mdi_mpi.h"
 #include "mdi_tcp.h"
+#include "mdi_test.h"
 
 //this is the number of communicator handles that have been returned by MDI_Accept_Connection()
 static int returned_comms = 0;
@@ -47,12 +47,14 @@ int general_init(const char* options, void* world_comm) {
   name = malloc(MDI_NAME_LENGTH+1);
   char* hostname;
   int port;
+  char* output_file;
   char* language = ((char*)"");
   int has_role = 0;
   int has_method = 0;
   int has_name = 0;
   int has_hostname = 0;
   int has_port = 0;
+  int has_output_file = 0;
 
   // get the MPI rank
   MPI_Comm mpi_communicator;
@@ -62,8 +64,13 @@ int general_init(const char* options, void* world_comm) {
     mpi_rank = 0;
   }
   else {
-    mpi_communicator = *(MPI_Comm*) world_comm;
-    MPI_Comm_rank(mpi_communicator, &mpi_rank);
+    if ( world_rank == -1 ) {
+      mpi_communicator = *(MPI_Comm*) world_comm;
+      MPI_Comm_rank(mpi_communicator, &mpi_rank);
+    }
+    else {
+      mpi_rank = 0;
+    }
   }
 
   // calculate argc
@@ -76,7 +83,7 @@ int general_init(const char* options, void* world_comm) {
   }
 
   // calculate argv
-  char* argv[argc];
+  char** argv = malloc( argc * sizeof(char*) );
   argv_line = strdup(options);
   token = strtok(argv_line, " ");
   for (i=0; i<argc; i++) {
@@ -141,6 +148,15 @@ int general_init(const char* options, void* world_comm) {
       ipi_compatibility = 1;
       iarg += 1;
     }
+    //-out
+    else if (strcmp(argv[iarg],"-out") == 0) {
+      if (iarg+2 > argc) {
+	mdi_error("Argument missing from -out option");
+      }
+      has_output_file = 1;
+      output_file = argv[iarg+1];
+      iarg += 2;
+    }
     //_language
     else if (strcmp(argv[iarg],"_language") == 0) {
       if (iarg+2 > argc) {
@@ -152,6 +168,11 @@ int general_init(const char* options, void* world_comm) {
     else {
       mdi_error("Unrecognized option");
     }
+  }
+
+  // redirect the standard output
+  if ( has_output_file == 1 ) {
+    freopen(output_file, "w", stdout);
   }
 
   // ensure the -role option was provided
@@ -179,7 +200,7 @@ int general_init(const char* options, void* world_comm) {
     // initialize this code as a driver
 
     if ( strcmp(method, "MPI") == 0 ) {
-      mpi_identify_codes("", do_split);
+      mpi_identify_codes("", do_split, mpi_communicator);
       mpi_initialized = 1;
     }
     else if ( strcmp(method, "TCP") == 0 ) {
@@ -190,6 +211,9 @@ int general_init(const char* options, void* world_comm) {
 	tcp_listen(port);
       }
     }
+    else if ( strcmp(method, "TEST") == 0 ) {
+      test_initialize();
+    }
     else {
       mdi_error("Error in MDI_Init: method not recognized");
     }
@@ -199,7 +223,7 @@ int general_init(const char* options, void* world_comm) {
     // initialize this code as an engine
 
     if ( strcmp(method, "MPI") == 0 ) {
-      mpi_identify_codes(name, do_split);
+      mpi_identify_codes(name, do_split, mpi_communicator);
       mpi_initialized = 1;
     }
     else if ( strcmp(method, "TCP") == 0 ) {
@@ -213,6 +237,13 @@ int general_init(const char* options, void* world_comm) {
 	tcp_request_connection(port, hostname);
       }
     }
+    else if ( strcmp(method, "TEST") == 0 ) {
+      test_initialize();
+    }
+    else {
+      mdi_error("Error in MDI_Init: method not recognized");
+    }
+
     
   }
   else {
@@ -226,8 +257,8 @@ int general_init(const char* options, void* world_comm) {
     }
   }
 
-  //delete[] argv;
   free( argv_line );
+  free( argv );
 
   return 0;
 }
@@ -294,6 +325,9 @@ int general_send(const void* buf, int count, MDI_Datatype datatype, MDI_Comm com
   else if ( this->method == MDI_TCP ) {
     tcp_send(buf, count, datatype, comm);
   }
+  else if ( this->method == MDI_TEST ) {
+    test_send(buf, count, datatype, comm);
+  }
   else {
     mdi_error("MDI method not recognized in communicator_send");
   }
@@ -332,6 +366,9 @@ int general_recv(void* buf, int count, MDI_Datatype datatype, MDI_Comm comm) {
   else if ( this->method == MDI_TCP ) {
     tcp_recv(buf, count, datatype, comm);
   }
+  else if ( this->method == MDI_TEST ) {
+    test_recv(buf, count, datatype, comm);
+  }
   else {
     mdi_error("MDI method not recognized in communicator_send");
   }
@@ -356,10 +393,11 @@ int general_send_command(const char* buf, MDI_Comm comm) {
     mdi_error("Called MDI_Send_Command with incorrect rank");
   }
   int count = MDI_COMMAND_LENGTH;
-  char command[MDI_COMMAND_LENGTH];
+  char* command = malloc( MDI_COMMAND_LENGTH * sizeof(char) );
 
   strcpy(command, buf);
   int ret = general_send( command, count, MDI_CHAR, comm );
+  free( command );
   return ret;
 }
 
