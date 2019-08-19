@@ -52,7 +52,7 @@ group		nonneb subtract all nebatoms
 
 fix             1 all mdi
 fix		2 lower setforce 0.0 0.0 0.0
-fix		3 nebatoms neb 1.0 parallel ideal
+#fix		3 nebatoms neb 1.0 parallel ideal
 fix		4 all enforce2d
 
 thermo		100

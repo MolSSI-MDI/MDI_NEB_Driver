@@ -128,7 +128,7 @@ cout <<"Engines to connect to: " << engines << endl;
 //  double energy[engines] = {0};
   vector<double> energy(engines, 0);
 
-  //Start a Geometry Optimization for each node.
+  //Start a Geometry Optimization for each image.
   for (int iengine = 0; iengine < engines; iengine++) {
 	MDI_Send_Command("OPTG_INIT", mm_comms[iengine]);
   }
@@ -139,6 +139,9 @@ cout <<"Engines to connect to: " << engines << endl;
   int iteration = 0;
   int max_engine = -1;
   bool climbing_phase = false;
+  double plen = 0.0; // distance to previous image
+  double nlen = 0.0; // distance to next image
+  double dotpath = 0.0;
   while ( (!energy_met) || (!force_met) ) {
 //  while (iteration <=3) {
 	cout << "Timestep: " << iteration << endl;
@@ -192,7 +195,7 @@ cout <<"Engines to connect to: " << engines << endl;
 	
 	
 		//Generate the Tangent for the current image.
-		neb_utilities::generate_tangent(coords, tangent, tangent_pos, tangent_neg, energy, natoms, iengine);
+		neb_utilities::generate_tangent(coords, tangent, tangent_pos, tangent_neg, energy, natoms, iengine, plen, nlen, dotpath);
 			
 		// Generate the normalize tangent.
 		vector<double> norm_tan(natoms*3, 0);
@@ -203,7 +206,7 @@ cout <<"Engines to connect to: " << engines << endl;
 		neb_utilities::generate_spring_forces(spring_forces, spring_const, tangent_pos, tangent_neg, norm_tan);
 	
 		// Update the forces based on the spring forces.
-		neb_utilities::update_forces(forces[iengine], norm_tan, spring_forces, iengine, climbing_phase, max_engine);
+		neb_utilities::update_forces(forces[iengine], norm_tan, spring_forces, spring_const, iengine, climbing_phase, max_engine, plen, nlen, dotpath);
 	}    
 
 
