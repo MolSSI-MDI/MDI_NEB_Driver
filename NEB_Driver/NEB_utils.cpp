@@ -2,11 +2,58 @@
 #include <vector>
 #include <iostream>
 namespace neb_utilities {
-  void generate_tangent(std::vector<std::vector<double>> coords, std::vector<double> &tangent, std::vector<double> &tangent_pos, std::vector<double> &tangent_neg, std::vector<double> energy, int natoms, int iengine, double &plen, double &nlen, double &dotpath) {
-		for (int i = 0; i < natoms*3; i++) {
-			tangent_pos[i] = coords[iengine+1][i] - coords[iengine][i];
-			tangent_neg[i] = coords[iengine][i] - coords[iengine-1][i];
-		}
+  void generate_tangent(std::vector<std::vector<double>> coords, std::vector<std::vector<double>> cell, std::vector<double> &tangent, std::vector<double> &tangent_pos, std::vector<double> &tangent_neg, std::vector<double> energy, int natoms, int iengine, double &plen, double &nlen, double &dotpath) {
+    for (int iatom = 0; iatom < natoms; iatom++) {
+      tangent_pos[iatom*3 + 0] = coords[iengine+1][iatom*3 + 0] - coords[iengine][iatom*3 + 0];
+      tangent_pos[iatom*3 + 1] = coords[iengine+1][iatom*3 + 1] - coords[iengine][iatom*3 + 1];
+      tangent_pos[iatom*3 + 2] = coords[iengine+1][iatom*3 + 2] - coords[iengine][iatom*3 + 2];
+
+      for (int icell = 0; icell < 3; icell++) {
+	// get the dot product of tangent_pos with this cell vector
+	double dot = cell[iengine][icell*3 + 0] * tangent_pos[iatom*3 + 0] + 
+	  cell[iengine][icell*3 + 1] * tangent_pos[iatom*3 + 1] + 
+	  cell[iengine][icell*3 + 2] * tangent_pos[iatom*3 + 2];
+	double cell_dot = cell[iengine][icell*3 + 0] * cell[iengine][icell*3 + 0] +
+	  cell[iengine][icell*3 + 1] * cell[iengine][icell*3 + 1] +
+	  cell[iengine][icell*3 + 2] * cell[iengine][icell*3 + 2];
+	if ( dot / cell_dot > 0.5 ) {
+	  tangent_pos[iatom*3 + 0] -= cell[iengine][icell*3 + 0];
+	  tangent_pos[iatom*3 + 1] -= cell[iengine][icell*3 + 1];
+	  tangent_pos[iatom*3 + 2] -= cell[iengine][icell*3 + 2];
+	}
+	else if ( dot / cell_dot < -0.5 ) {
+	  tangent_pos[iatom*3 + 0] += cell[iengine][icell*3 + 0];
+	  tangent_pos[iatom*3 + 1] += cell[iengine][icell*3 + 1];
+	  tangent_pos[iatom*3 + 2] += cell[iengine][icell*3 + 2];
+	}
+      }
+
+      tangent_neg[iatom*3 + 0] = coords[iengine][iatom*3 + 0] - coords[iengine-1][iatom*3 + 0];
+      tangent_neg[iatom*3 + 1] = coords[iengine][iatom*3 + 1] - coords[iengine-1][iatom*3 + 1];
+      tangent_neg[iatom*3 + 2] = coords[iengine][iatom*3 + 2] - coords[iengine-1][iatom*3 + 2];
+
+      for (int icell = 0; icell < 3; icell++) {
+	// get the dot product of tangent_neg with this cell vector
+	double dot = cell[iengine][icell*3 + 0] * tangent_neg[iatom*3 + 0] + 
+	  cell[iengine][icell*3 + 1] * tangent_neg[iatom*3 + 1] + 
+	  cell[iengine][icell*3 + 2] * tangent_neg[iatom*3 + 2];
+	double cell_dot = cell[iengine][icell*3 + 0] * cell[iengine][icell*3 + 0] +
+	  cell[iengine][icell*3 + 1] * cell[iengine][icell*3 + 1] +
+	  cell[iengine][icell*3 + 2] * cell[iengine][icell*3 + 2];
+	if ( dot / cell_dot > 0.5 ) {
+	  tangent_neg[iatom*3 + 0] -= cell[iengine][icell*3 + 0];
+	  tangent_neg[iatom*3 + 1] -= cell[iengine][icell*3 + 1];
+	  tangent_neg[iatom*3 + 2] -= cell[iengine][icell*3 + 2];
+	}
+	else if ( dot / cell_dot < -0.5 ) {
+	  tangent_neg[iatom*3 + 0] += cell[iengine][icell*3 + 0];
+	  tangent_neg[iatom*3 + 1] += cell[iengine][icell*3 + 1];
+	  tangent_neg[iatom*3 + 2] += cell[iengine][icell*3 + 2];
+	}
+      }
+
+
+    }
 		double v_i_max = std::max(std::abs(energy[iengine+1] - energy[iengine]), std::abs(energy[iengine-1] - energy[iengine]));
 		double v_i_min = std::min(std::abs(energy[iengine+1] - energy[iengine]), std::abs(energy[iengine-1] - energy[iengine]));
 
@@ -112,6 +159,7 @@ namespace neb_utilities {
 	    prefactor = -dot + spring_const*(nlen-plen);
 	  }
 
+	  /*
 	  std::cout << std::endl;
 	  std::cout << "IMAGE: " << iengine << std::endl;
 	  std::cout << "dotSpringTanget: " << dot_prod << std::endl;
@@ -123,6 +171,7 @@ namespace neb_utilities {
 	  std::cout << "dot: " << dot/0.00000167580395 << std::endl;
 	  std::cout << "plen: " << plen << std::endl;
 	  std::cout << "nlen: " << nlen << std::endl;
+	  */
 	  for (int i = 0; i < size; i++) {
 	    forces[i] += prefactor * norm_tan[i] + angular_contr*( spring_forces[i] - dot_prod * norm_tan[i] );
 	  }

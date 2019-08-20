@@ -50,8 +50,8 @@ group		nebatoms region surround
 set		group nebatoms type 3
 group		nonneb subtract all nebatoms
 
-fix             1 all mdi
-fix		2 lower setforce 0.0 0.0 0.0
+fix		1 lower setforce 0.0 0.0 0.0
+fix             2 all mdi
 #fix		3 nebatoms neb 1.0 parallel ideal
 fix		4 all enforce2d
 

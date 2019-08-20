@@ -127,6 +127,8 @@ cout <<"Engines to connect to: " << engines << endl;
   vector<vector<double>> coords(engines, atoms);
 //  double energy[engines] = {0};
   vector<double> energy(engines, 0);
+  vector<double> cell_engine(12, 0);
+  vector<vector<double>> cell(engines, cell_engine);
 
   //Start a Geometry Optimization for each image.
   for (int iengine = 0; iengine < engines; iengine++) {
@@ -143,7 +145,7 @@ cout <<"Engines to connect to: " << engines << endl;
   double nlen = 0.0; // distance to next image
   double dotpath = 0.0;
   while ( (!energy_met) || (!force_met) ) {
-//  while (iteration <=3) {
+  //while (iteration <=100) {
 	cout << "Timestep: " << iteration << endl;
 	double old_energy[engines];
 	for (int iengine; iengine < engines; iengine++) {
@@ -166,6 +168,10 @@ cout <<"Engines to connect to: " << engines << endl;
 		//Request and receive the coordinates from the mm engine.
 		MDI_Send_Command("<COORDS", mm_comms[iengine]);
 		MDI_Recv(&(coords[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
+
+		//Request and receive the cell dimensions from the mm engine.
+		MDI_Send_Command("<CELL", mm_comms[iengine]);
+		MDI_Recv(&(cell[iengine][0]), 12, MDI_DOUBLE, mm_comms[iengine]);
 	
 		// Request and recieve the energy from the mm engine. Also store the old energy.
 		old_energy[iengine] = energy[iengine];
@@ -195,7 +201,7 @@ cout <<"Engines to connect to: " << engines << endl;
 	
 	
 		//Generate the Tangent for the current image.
-		neb_utilities::generate_tangent(coords, tangent, tangent_pos, tangent_neg, energy, natoms, iengine, plen, nlen, dotpath);
+		neb_utilities::generate_tangent(coords, cell, tangent, tangent_pos, tangent_neg, energy, natoms, iengine, plen, nlen, dotpath);
 			
 		// Generate the normalize tangent.
 		vector<double> norm_tan(natoms*3, 0);
