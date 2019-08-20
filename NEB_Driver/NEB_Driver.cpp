@@ -132,7 +132,7 @@ cout <<"Engines to connect to: " << engines << endl;
 
   //Start a Geometry Optimization for each image.
   for (int iengine = 0; iengine < engines; iengine++) {
-	MDI_Send_Command("OPTG_INIT", mm_comms[iengine]);
+	MDI_Send_Command("INIT_OPTG", mm_comms[iengine]);
   }
   
   // Perform each iteration of the simulation
