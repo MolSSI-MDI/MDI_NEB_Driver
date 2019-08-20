@@ -129,7 +129,7 @@ namespace neb_utilities {
 		}
 		mag_tan_neg = sqrt(mag_tan_neg);
 		for (int i = 0; i < size; i++) {
-			spring_forces[i] = spring_const * (mag_tan_pos - mag_tan_neg) * norm_tan[i];
+		  spring_forces[i] = spring_const * (tangent_pos[i] - tangent_neg[i]);
 		}
 	}
 
@@ -159,7 +159,6 @@ namespace neb_utilities {
 	    prefactor = -dot + spring_const*(nlen-plen);
 	  }
 
-	  /*
 	  std::cout << std::endl;
 	  std::cout << "IMAGE: " << iengine << std::endl;
 	  std::cout << "dotSpringTanget: " << dot_prod << std::endl;
@@ -171,7 +170,6 @@ namespace neb_utilities {
 	  std::cout << "dot: " << dot/0.00000167580395 << std::endl;
 	  std::cout << "plen: " << plen << std::endl;
 	  std::cout << "nlen: " << nlen << std::endl;
-	  */
 	  for (int i = 0; i < size; i++) {
 	    forces[i] += prefactor * norm_tan[i] + angular_contr*( spring_forces[i] - dot_prod * norm_tan[i] );
 	  }
