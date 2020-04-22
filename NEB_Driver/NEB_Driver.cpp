@@ -15,7 +15,8 @@ using namespace std;
 // Method to connect to the engines and store them in the mm_comms array.
 void connect_to_engine(vector<MDI_Comm> &mm_comms, int engines) {
     for (int iengine = 0; iengine < engines; iengine++) {
-	MDI_Comm comm = MDI_Accept_Communicator();
+      MDI_Comm comm;
+      MDI_Accept_Communicator(&comm);
 
 	// Determine the name of this engine
 	char* engine_name = new char[MDI_NAME_LENGTH];
@@ -23,7 +24,7 @@ void connect_to_engine(vector<MDI_Comm> &mm_comms, int engines) {
 	MDI_Recv(engine_name, MDI_NAME_LENGTH, MDI_CHAR, comm);
 	//  Check to see which engine is connecting to the driver. This driver assumes engine names are passed as 'MM1', 'MM2', 'MM3', ... 'MMn'.    
 	if ( ( engine_name[0] == 'M' ) && (engine_name[1] == 'M')) {
-		if ( mm_comms[std::atoi(&engine_name[2])-1] != MDI_NULL_COMM ) {
+		if ( mm_comms[std::atoi(&engine_name[2])-1] != MDI_COMM_NULL ) {
 		      throw runtime_error("Engine trying to be overritten.");
 		}
 		// Store the reference to the engine in an ordered list so it can be referenced later.
@@ -108,7 +109,7 @@ cout <<"Engines to connect to: " << engines << endl;
  
  
   // Connect to the engines
-  vector<MDI_Comm> mm_comms(engines, MDI_NULL_COMM);
+  vector<MDI_Comm> mm_comms(engines, MDI_COMM_NULL);
 
   int nengines = engines;
   connect_to_engine(mm_comms, engines);
@@ -132,7 +133,7 @@ cout <<"Engines to connect to: " << engines << endl;
 
   //Start a Geometry Optimization for each image.
   for (int iengine = 0; iengine < engines; iengine++) {
-	MDI_Send_Command("INIT_OPTG", mm_comms[iengine]);
+	MDI_Send_Command("@INIT_OPTG", mm_comms[iengine]);
   }
   
   // Perform each iteration of the simulation
