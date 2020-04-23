@@ -15,7 +15,8 @@ using namespace std;
 // Method to connect to the engines and store them in the mm_comms array.
 void connect_to_engine(vector<MDI_Comm> &mm_comms, int engines) {
     for (int iengine = 0; iengine < engines; iengine++) {
-	MDI_Comm comm = MDI_Accept_Communicator();
+      MDI_Comm comm;
+      MDI_Accept_Communicator(&comm);
 
 	// Determine the name of this engine
 	char* engine_name = new char[MDI_NAME_LENGTH];
@@ -23,7 +24,7 @@ void connect_to_engine(vector<MDI_Comm> &mm_comms, int engines) {
 	MDI_Recv(engine_name, MDI_NAME_LENGTH, MDI_CHAR, comm);
 	//  Check to see which engine is connecting to the driver. This driver assumes engine names are passed as 'MM1', 'MM2', 'MM3', ... 'MMn'.    
 	if ( ( engine_name[0] == 'M' ) && (engine_name[1] == 'M')) {
-		if ( mm_comms[std::atoi(&engine_name[2])-1] != MDI_NULL_COMM ) {
+		if ( mm_comms[std::atoi(&engine_name[2])-1] != MDI_COMM_NULL ) {
 		      throw runtime_error("Engine trying to be overritten.");
 		}
 		// Store the reference to the engine in an ordered list so it can be referenced later.
@@ -108,7 +109,7 @@ cout <<"Engines to connect to: " << engines << endl;
  
  
   // Connect to the engines
-  vector<MDI_Comm> mm_comms(engines, MDI_NULL_COMM);
+  vector<MDI_Comm> mm_comms(engines, MDI_COMM_NULL);
 
   int nengines = engines;
   connect_to_engine(mm_comms, engines);
@@ -127,10 +128,12 @@ cout <<"Engines to connect to: " << engines << endl;
   vector<vector<double>> coords(engines, atoms);
 //  double energy[engines] = {0};
   vector<double> energy(engines, 0);
+  vector<double> cell_engine(12, 0);
+  vector<vector<double>> cell(engines, cell_engine);
 
-  //Start a Geometry Optimization for each node.
+  //Start a Geometry Optimization for each image.
   for (int iengine = 0; iengine < engines; iengine++) {
-	MDI_Send_Command("OPTG_INIT", mm_comms[iengine]);
+	MDI_Send_Command("@INIT_OPTG", mm_comms[iengine]);
   }
   
   // Perform each iteration of the simulation
@@ -139,10 +142,16 @@ cout <<"Engines to connect to: " << engines << endl;
   int iteration = 0;
   int max_engine = -1;
   bool climbing_phase = false;
+  double plen = 0.0; // distance to previous image
+  double nlen = 0.0; // distance to next image
+  double dotpath = 0.0;
   while ( (!energy_met) || (!force_met) ) {
-//  while (iteration <=3) {
+  //while (iteration <=100) {
 	cout << "Timestep: " << iteration << endl;
-	double old_energy[engines] = {0};
+	double old_energy[engines];
+	for (int iengine; iengine < engines; iengine++) {
+	  old_energy[iengine] = 0.0;
+	}
 //	vector<vector<double>> old_forces(engines, atoms);
 	//Perform a geometry optimization and give back the forces and coordinates from each node.
 	for (int iengine = 0; iengine < engines; iengine++) {    
@@ -160,6 +169,10 @@ cout <<"Engines to connect to: " << engines << endl;
 		//Request and receive the coordinates from the mm engine.
 		MDI_Send_Command("<COORDS", mm_comms[iengine]);
 		MDI_Recv(&(coords[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
+
+		//Request and receive the cell dimensions from the mm engine.
+		MDI_Send_Command("<CELL", mm_comms[iengine]);
+		MDI_Recv(&(cell[iengine][0]), 12, MDI_DOUBLE, mm_comms[iengine]);
 	
 		// Request and recieve the energy from the mm engine. Also store the old energy.
 		old_energy[iengine] = energy[iengine];
@@ -189,7 +202,7 @@ cout <<"Engines to connect to: " << engines << endl;
 	
 	
 		//Generate the Tangent for the current image.
-		neb_utilities::generate_tangent(coords, tangent, tangent_pos, tangent_neg, energy, natoms, iengine);
+		neb_utilities::generate_tangent(coords, cell, tangent, tangent_pos, tangent_neg, energy, natoms, iengine, plen, nlen, dotpath);
 			
 		// Generate the normalize tangent.
 		vector<double> norm_tan(natoms*3, 0);
@@ -200,7 +213,7 @@ cout <<"Engines to connect to: " << engines << endl;
 		neb_utilities::generate_spring_forces(spring_forces, spring_const, tangent_pos, tangent_neg, norm_tan);
 	
 		// Update the forces based on the spring forces.
-		neb_utilities::update_forces(forces[iengine], norm_tan, spring_forces, iengine, climbing_phase, max_engine);
+		neb_utilities::update_forces(forces[iengine], norm_tan, spring_forces, spring_const, iengine, climbing_phase, max_engine, plen, nlen, dotpath);
 	}    
 
 

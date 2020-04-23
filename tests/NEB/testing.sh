@@ -1,10 +1,17 @@
 #location of required codes
 DRIVER_LOC=$(cat ../locations/MDI_NEB_Driver)
 LAMMPS_LOC=$(cat ../locations/LAMMPS)
-NENGINES=$1
-SPRING_CONST=$2
-ENERGY_THRESHOLD=$3
-FORCE_THRESHOLD=$4
+#NENGINES=$1
+#SPRING_CONST=$2
+#ENERGY_THRESHOLD=$3
+#FORCE_THRESHOLD=$4
+NENGINES=5
+SPRING_CONST=0.00000167580395
+ENERGY_THRESHOLD=0.0000001
+FORCE_THRESHOLD=0.0000001
+
+# the conversion factor from LAMMPS units to atomic units is:
+# force: 0.00000167580395
 
 #remove old files
 if [ -d work ]; then 
