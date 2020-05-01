@@ -128,7 +128,7 @@ cout <<"Engines to connect to: " << engines << endl;
   vector<vector<double>> coords(engines, atoms);
 //  double energy[engines] = {0};
   vector<double> energy(engines, 0);
-  vector<double> cell_engine(12, 0);
+  vector<double> cell_engine(9, 0);
   vector<vector<double>> cell(engines, cell_engine);
 
   //Start a Geometry Optimization for each image.
@@ -172,7 +172,7 @@ cout <<"Engines to connect to: " << engines << endl;
 
 		//Request and receive the cell dimensions from the mm engine.
 		MDI_Send_Command("<CELL", mm_comms[iengine]);
-		MDI_Recv(&(cell[iengine][0]), 12, MDI_DOUBLE, mm_comms[iengine]);
+		MDI_Recv(&(cell[iengine][0]), 9, MDI_DOUBLE, mm_comms[iengine]);
 	
 		// Request and recieve the energy from the mm engine. Also store the old energy.
 		old_energy[iengine] = energy[iengine];
