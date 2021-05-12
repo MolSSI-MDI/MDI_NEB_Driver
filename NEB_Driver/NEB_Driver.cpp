@@ -51,33 +51,24 @@ int main(int argc, char **argv) {
   MPI_Comm world_comm;
   MPI_Init(&argc, &argv);
 
+  // Initialize the MDI Library
+  world_comm = MPI_COMM_WORLD;
+  int ret = MDI_Init(&argc, &argv);
+  MDI_MPI_get_world_comm(&world_comm);
+  if ( ret != 0 ) {
+    throw runtime_error("The MDI library was not initialized correctly.");
+  }
+  bool initialized_mdi = true;
+
   // Read through all the command line options
   int iarg = 1;
   int engines = 0;
-  bool initialized_mdi = false;
   double spring_const = 0.0;
   double energy_thresh = 0.0;
   double force_thresh = 0.0;
   while ( iarg < argc ) {
 
-    if ( strcmp(argv[iarg],"-mdi") == 0 ) {
-
-      // Ensure that the argument to the -mdi option was provided
-      if ( argc-iarg < 2 ) {
-	throw runtime_error("The -mdi argument was not provided.");
-      }
-
-      // Initialize the MDI Library
-      world_comm = MPI_COMM_WORLD;
-      int ret = MDI_Init(argv[iarg+1], &world_comm);
-      if ( ret != 0 ) {
-	throw runtime_error("The MDI library was not initialized correctly.");
-      }
-      initialized_mdi = true;
-      iarg += 2;
-
-    }
-    else if ( strcmp(argv[iarg], "-engines") == 0 ) {
+    if ( strcmp(argv[iarg], "-engines") == 0 ) {
       engines = std::stoi(argv[iarg+1]);
       cout << "Engines: " << engines << endl;
       iarg += 2;
