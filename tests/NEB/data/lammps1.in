@@ -23,9 +23,7 @@ dump_modify     2 element O H
 thermo_style    multi
 thermo          1
 
-fix             1 all mdi
+fix             1 all nvt temp 300.0 300.0 70.0
+fix             2 all shake 0.0001 20 0 b 1 a 1 
 
-fix             2 all nvt temp 300.0 300.0 70.0
-fix             3 all shake 0.0001 20 0 b 1 a 1 
-
-mdi
+mdi_engine

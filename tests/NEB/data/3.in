@@ -1,5 +1,7 @@
 # 2d NEB surface simulation, hop from surface to become adatom
 
+units           real
+
 dimension	2
 boundary	p s p
 
@@ -51,9 +53,8 @@ set		group nebatoms type 3
 group		nonneb subtract all nebatoms
 
 fix		1 lower setforce 0.0 0.0 0.0
-fix             2 all mdi
-#fix		3 nebatoms neb 1.0 parallel ideal
-fix		4 all enforce2d
+#fix		2 nebatoms neb 1.0 parallel ideal
+fix		3 all enforce2d
 
 thermo		100
 
@@ -64,4 +65,4 @@ thermo		100
 
 min_style	quickmin
 
-mdi
+mdi_engine

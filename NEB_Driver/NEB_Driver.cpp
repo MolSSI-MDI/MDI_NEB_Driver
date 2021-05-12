@@ -31,6 +31,7 @@ void connect_to_engine(vector<MDI_Comm> &mm_comms, int engines) {
 		mm_comms[std::atoi(&engine_name[2])-1] = comm;
 	} 
 	else {
+	  printf("ENGINE NAME: %s\n",engine_name);
 	      throw runtime_error("Unrecognized engine name.");
 	}
 	// De-allocate space for the engine_name.
@@ -137,127 +138,119 @@ cout <<"Engines to connect to: " << engines << endl;
   double nlen = 0.0; // distance to next image
   double dotpath = 0.0;
   while ( (!energy_met) || (!force_met) ) {
-  //while (iteration <=100) {
-	cout << "Timestep: " << iteration << endl;
-	double old_energy[engines];
-	for (int iengine; iengine < engines; iengine++) {
-	  old_energy[iengine] = 0.0;
-	}
-//	vector<vector<double>> old_forces(engines, atoms);
-	//Perform a geometry optimization and give back the forces and coordinates from each node.
-	for (int iengine = 0; iengine < engines; iengine++) {    
-		//Proceed to the forces node.
-		MDI_Send_Command("@FORCES", mm_comms[iengine]);
-		//Request and receive the forces from the mm engine. Also store the old forces.
+    cout << "Timestep: " << iteration << endl;
+    double old_energy[engines];
+    for (int iengine; iengine < engines; iengine++) {
+      old_energy[iengine] = 0.0;
+    }
+    //Perform a geometry optimization and give back the forces and coordinates from each node.
+    for (int iengine = 0; iengine < engines; iengine++) {    
+      //Proceed to the forces node.
+      MDI_Send_Command("@FORCES", mm_comms[iengine]);
+
+      //Request and receive the forces from the mm engine. Also store the old forces.
+      MDI_Send_Command("<FORCES", mm_comms[iengine]);
+
+      MDI_Recv(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 		
-//		for (int i = 0; i < 3*natoms; i++) {
-//			old_forces[iengine][i] = forces[iengine][i];
-//		}
-		MDI_Send_Command("<FORCES", mm_comms[iengine]);
+      //Request and receive the coordinates from the mm engine.
+      MDI_Send_Command("<COORDS", mm_comms[iengine]);
+      MDI_Recv(&(coords[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
 
-		MDI_Recv(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
-		
-		//Request and receive the coordinates from the mm engine.
-		MDI_Send_Command("<COORDS", mm_comms[iengine]);
-		MDI_Recv(&(coords[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
-
-		//Request and receive the cell dimensions from the mm engine.
-		MDI_Send_Command("<CELL", mm_comms[iengine]);
-		MDI_Recv(&(cell[iengine][0]), 9, MDI_DOUBLE, mm_comms[iengine]);
+      //Request and receive the cell dimensions from the mm engine.
+      MDI_Send_Command("<CELL", mm_comms[iengine]);
+      MDI_Recv(&(cell[iengine][0]), 9, MDI_DOUBLE, mm_comms[iengine]);
 	
-		// Request and recieve the energy from the mm engine. Also store the old energy.
-		old_energy[iengine] = energy[iengine];
-		MDI_Send_Command("<ENERGY", mm_comms[iengine]);
-		MDI_Recv(&energy[iengine], 1, MDI_DOUBLE, mm_comms[iengine]);
-		cout << "Engine: " << iengine+1 << " Energy: " << std::setprecision(20) << energy[iengine] << endl;
+      // Request and recieve the energy from the mm engine. Also store the old energy.
+      old_energy[iengine] = energy[iengine];
+      MDI_Send_Command("<ENERGY", mm_comms[iengine]);
+      MDI_Recv(&energy[iengine], 1, MDI_DOUBLE, mm_comms[iengine]);
+      cout << "Engine: " << iengine+1 << " Energy: " << std::setprecision(20) << energy[iengine] << endl;
+    }
+
+    // These exist outside the NEB method
+    if (climbing_phase == false) {
+      // Find the engine with the highest energy to push to the saddlepoint.
+      max_engine = 0;
+      for (int iengine = 0; iengine < engines; iengine++) {
+	if (energy[iengine] > energy[max_engine]) {
+	  max_engine = iengine;
 	}
+      }
+    }
 
-// These exist outside the NEB method
-	if (climbing_phase == false) {
-		// Find the engine with the highest energy to push to the saddlepoint.
-		max_engine = 0;
-		for (int iengine = 0; iengine < engines; iengine++) {
-			if (energy[iengine] > energy[max_engine]) {
-				max_engine = iengine;
-			}
-		}
-	}
+    // Perform the NEB operation over all internal replicas.
+    for (int iengine = 1; iengine < engines-1; iengine++) {
 
-	// Perform the NEB operation over all internal replicas.
-	for (int iengine = 1; iengine < engines-1; iengine++) {
-
-		// Generate the Tangent for the current image.  
-		vector<double> tangent_pos(natoms*3, 0);
-		vector<double> tangent_neg(natoms*3, 0);
-		vector<double> tangent(natoms*3, 0);
+      // Generate the Tangent for the current image.  
+      vector<double> tangent_pos(natoms*3, 0);
+      vector<double> tangent_neg(natoms*3, 0);
+      vector<double> tangent(natoms*3, 0);
 	
 	
-		//Generate the Tangent for the current image.
-		neb_utilities::generate_tangent(coords, cell, tangent, tangent_pos, tangent_neg, energy, natoms, iengine, plen, nlen, dotpath);
+      //Generate the Tangent for the current image.
+      neb_utilities::generate_tangent(coords, cell, tangent, tangent_pos, tangent_neg, energy, natoms, iengine, plen, nlen, dotpath);
 			
-		// Generate the normalize tangent.
-		vector<double> norm_tan(natoms*3, 0);
-		neb_utilities::normalize_tangent(norm_tan, tangent);
+      // Generate the normalize tangent.
+      vector<double> norm_tan(natoms*3, 0);
+      neb_utilities::normalize_tangent(norm_tan, tangent);
 	
-		// Generate the spring forces for the current engine.
-		vector<double> spring_forces(natoms*3, 0);
-		neb_utilities::generate_spring_forces(spring_forces, spring_const, tangent_pos, tangent_neg, norm_tan);
+      // Generate the spring forces for the current engine.
+      vector<double> spring_forces(natoms*3, 0);
+      neb_utilities::generate_spring_forces(spring_forces, spring_const, tangent_pos, tangent_neg, norm_tan);
 	
-		// Update the forces based on the spring forces.
-		neb_utilities::update_forces(forces[iengine], norm_tan, spring_forces, spring_const, iengine, climbing_phase, max_engine, plen, nlen, dotpath);
-	}    
+      // Update the forces based on the spring forces.
+      neb_utilities::update_forces(forces[iengine], norm_tan, spring_forces, spring_const, iengine, climbing_phase, max_engine, plen, nlen, dotpath);
+    }    
 
 
-//	double max_replica_force = fnorm_square(old_forces, engines);
-//	cout << "max_replica_force: " << max_replica_force << endl;
+    // Send the updated forces back to the engines.
+    for (int iengine = 0; iengine < engines; iengine++) { 
+      MDI_Send_Command(">FORCES", mm_comms[iengine]);
+      MDI_Send(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
+    } 
 	
-	// Send the updated forces back to the engines.
-	for (int iengine = 0; iengine < engines; iengine++) { 
-		MDI_Send_Command(">FORCES", mm_comms[iengine]);
-		MDI_Send(&(forces[iengine][0]), 3*natoms, MDI_DOUBLE, mm_comms[iengine]);
-	} 
-	
-	if (iteration > 0) {
-		//Check if we need to perform another iteration based on the energy.
-		if (energy_thresh == 0) {
-			energy_met = true;
-		} else {
-			energy_met = true;
-			for (int iengine = 0; iengine < engines; iengine++) {
-				if ( abs(old_energy[iengine] - energy[iengine]) > energy_thresh) {
-					energy_met = false;
-				}
-			}
-		}
-
-	    	//Check if we need to perform another iteration based on the forces..
-		if (force_thresh == 0) {
-			force_met = true;
-		} else {
-			force_met = true;
-			for (int iengine = 0; iengine < engines; iengine++) {
-				for (int i = 0; i < 3*natoms; i++) {
-					if (forces[iengine][i] > force_thresh) {
-						force_met = false;
-					}
-				}
-			}
-		}
-    	}
-	iteration++;
-  	
-	//Provide final output.
-	  ofstream output_file;
-	for ( int iengine = 0; iengine < engines; iengine++) {
-		std::string filename = std::to_string(iengine) + "_replica_output.xyz";
-		output_file.open(filename, std::ofstream::app);
-		output_file << natoms << endl;
-		output_file << "Coordinates from iteration " << (iteration-1) << " of an NEB calculation." << endl;
-		for (int i = 0; i < natoms; i++) {
-			output_file << "H " << coords[iengine][3*i] << " " << coords[iengine][3*i+1] << " " << coords[iengine][3*i+2] << endl;
-		}
-		output_file.close();
+    if (iteration > 0) {
+      //Check if we need to perform another iteration based on the energy.
+      if (energy_thresh == 0) {
+	energy_met = true;
+      } else {
+	energy_met = true;
+	for (int iengine = 0; iengine < engines; iengine++) {
+	  if ( abs(old_energy[iengine] - energy[iengine]) > energy_thresh) {
+	    energy_met = false;
+	  }
 	}
+      }
+
+      //Check if we need to perform another iteration based on the forces..
+      if (force_thresh == 0) {
+	force_met = true;
+      } else {
+	force_met = true;
+	for (int iengine = 0; iengine < engines; iengine++) {
+	  for (int i = 0; i < 3*natoms; i++) {
+	    if (forces[iengine][i] > force_thresh) {
+	      force_met = false;
+	    }
+	  }
+	}
+      }
+    }
+    iteration++;
+
+    //Provide final output.
+    ofstream output_file;
+    for ( int iengine = 0; iengine < engines; iengine++) {
+      std::string filename = std::to_string(iengine) + "_replica_output.xyz";
+      output_file.open(filename, std::ofstream::app);
+      output_file << natoms << endl;
+      output_file << "Coordinates from iteration " << (iteration-1) << " of an NEB calculation." << endl;
+      for (int i = 0; i < natoms; i++) {
+	output_file << "H " << coords[iengine][3*i] << " " << coords[iengine][3*i+1] << " " << coords[iengine][3*i+2] << endl;
+      }
+      output_file.close();
+    }
   }
 
 
@@ -266,11 +259,11 @@ cout <<"Engines to connect to: " << engines << endl;
   std::string filename = "Final_NEB_output.xyz";
   output_file.open(filename, std::ofstream::app);
   for ( int iengine = 0; iengine < engines; iengine++) {
-	output_file << natoms << endl;
-	output_file << "Replica " << iengine << " final output" << endl;
-	for (int i = 0; i < natoms; i++) {
-		output_file << "H " << coords[iengine][3*i] << " " << coords[iengine][3*i+1] << " " << coords[iengine][3*i+2] << endl;
-	}
+    output_file << natoms << endl;
+    output_file << "Replica " << iengine << " final output" << endl;
+    for (int i = 0; i < natoms; i++) {
+      output_file << "H " << coords[iengine][3*i] << " " << coords[iengine][3*i+1] << " " << coords[iengine][3*i+2] << endl;
+    }
   }
   output_file.close();
 
@@ -279,6 +272,7 @@ cout <<"Engines to connect to: " << engines << endl;
 
   // Synchronize all MPI ranks
   MPI_Barrier(world_comm);
+  MPI_Finalize();
 
   return 0;
 }
