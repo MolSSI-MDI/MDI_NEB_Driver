@@ -1,5 +1,7 @@
 var searchData=
 [
-  ['world_5frank',['world_rank',['../mdi__mpi_8c.html#a0be0ed3102aab1d72782301d75cf570b',1,'world_rank():&#160;mdi_mpi.c'],['../mdi__mpi_8h.html#a0be0ed3102aab1d72782301d75cf570b',1,'world_rank():&#160;mdi_mpi.c']]],
-  ['world_5fsize',['world_size',['../mdi__mpi_8c.html#ab8411355a7d80016be6edcce3437b978',1,'world_size():&#160;mdi_mpi.c'],['../mdi__mpi_8h.html#ab8411355a7d80016be6edcce3437b978',1,'world_size():&#160;mdi_mpi.c']]]
+  ['send',['send',['../structcommunicator__struct.html#a55b7fc37c2fd09cc3444a03230a6d08f',1,'communicator_struct']]],
+  ['size',['size',['../structdynamic__array__struct.html#a4c9b2cb6c298d0c5e63458e47ed7fb8e',1,'dynamic_array_struct']]],
+  ['sockfd',['sockfd',['../structcommunicator__struct.html#a9e665309c637c211c55f9cb2900a0511',1,'communicator_struct']]],
+  ['stride',['stride',['../structdynamic__array__struct.html#a954737a27d8650b96e8a7167545fc87c',1,'dynamic_array_struct']]]
 ];
